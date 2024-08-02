@@ -1,46 +1,55 @@
 package com.example.springboot_kafkaproducer.producer;
 
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.test.context.EmbeddedKafka;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.verify;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+@ExtendWith(SpringExtension.class)
+@SpringBootTest
+@EmbeddedKafka(partitions = 1, topics = { "test-topic" })
 public class ProducerServiceTest {
 
-    @Mock
-    private KafkaTemplate<String, String> kafkaTemplate;
-
-    @InjectMocks
+    @Autowired
     private ProducerService producerService;
 
-    @Captor
-    private ArgumentCaptor<String> topicCaptor;
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
 
-    @Captor
-    private ArgumentCaptor<String> messageCaptor;
+    private BlockingQueue<ConsumerRecord<String, String>> records;
 
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
+        records = new LinkedBlockingQueue<>();
+    }
+
+    @KafkaListener(topics = "test-topic", groupId = "test-group")
+    public void listen(ConsumerRecord<String, String> record) {
+        records.add(record);
     }
 
     @Test
-    public void testSendMessage() {
+    public void testSendMessage() throws InterruptedException {
         String topic = "test-topic";
-        String message = "Hello, Kafka!";
+        String message = "message!";
 
         producerService.sendMessage(topic, message);
 
-        verify(kafkaTemplate).send(topicCaptor.capture(), messageCaptor.capture());
-
-        assertEquals(topic, topicCaptor.getValue());
-        assertEquals(message, messageCaptor.getValue());
+        ConsumerRecord<String, String> record = records.poll(10, TimeUnit.SECONDS);
+        assertNotNull(record);
+        assertEquals(topic, record.topic());
+        assertEquals(message, record.value());
     }
 }
